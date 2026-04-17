@@ -1,0 +1,1316 @@
+---
+title: "vine copula culculation"
+author: "Yan Xu"
+date: "2023-04-16"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+已有数据：IPO股票信息（IPOR&IPON）、历史日行情信息表（个股日度市场换手率）、沪深A股市场消费者月度信心指数
+目标股票代码：
+600837    海通证券    金融	AA	8.50
+002371	北方华创	电子设备	AA	8.22
+600276	恒瑞医药	医药生物	AA	8.18
+002410	广联达	信息技术	AA	8.44
+600406    国电南瑞 电气设备	AA	8.62
+600600    青岛啤酒    食品饮料	AA	8.30
+601088    中国神华    化石能源	AA	8.21
+
+### 数据导入
+```{r}
+library(tidyverse)
+library(lubridate)
+library(readr)
+##ESG评级为AA
+namefile <- c("600837_return.csv","002371_return.csv",
+              "600276_return.csv","002410_return.csv",
+              "600406_return.csv","600600_return.csv",
+              "601088_return.csv")
+##ESG评级为A
+# namefile <- c("601688_return.csv","002475_return.csv",
+#              "600196_return.csv","000063_return.csv",
+#              "300274_return.csv","000895_return.csv","600188_return.csv")
+##ESG评级为BBB
+# namefile <- c("000776_return.csv","002179_return.csv",
+#              "000538_return.csv","600050_return.csv",
+#              "002074_return.csv","600809_return.csv","601857_return.csv")
+##ESG评级为BB
+# namefile <- c("601628_return.csv","002049_return.csv",
+#              "002252_return.csv","002459_return.csv",
+#              "000568_return.csv","600346_return.csv")
+
+dataA1 <- read_csv(namefile[1],
+                   col_types=cols(
+                     TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+    )
+dataA1$LogReturn <- log(dataA1$ClosePrice/dataA1$OpenPrice)
+names(dataA1)<-c("TradingDate","Symbol","1","2","Return","Turnover Rate")
+
+dataA2 <- read_csv(namefile[2],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+)
+dataA2$LogReturn <- log(dataA2$ClosePrice/dataA2$OpenPrice)
+names(dataA2)<-c("TradingDate","Symbol","1","2","Return","Turnover Rate")
+dataA3 <- read_csv(namefile[3],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+)
+dataA3$LogReturn <- log(dataA3$ClosePrice/dataA3$OpenPrice)
+names(dataA3)<-c("TradingDate","Symbol","1","2","Return","Turnover Rate")
+dataA4 <- read_csv(namefile[4],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double()
+)
+    )
+dataA4$LogReturn <- log(dataA4$ClosePrice/dataA4$OpenPrice)
+names(dataA4)<-c("TradingDate","Symbol","1","2","Return","Turnover Rate")
+dataA5 <- read_csv(namefile[5],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double()))
+dataA5$LogReturn <- log(dataA5$ClosePrice/dataA5$OpenPrice)
+names(dataA5)<-c("TradingDate","Symbol","1","2","Return","Turnover Rate")
+dataA6 <- read_csv(namefile[6],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+    )
+dataA6$LogReturn <- log(dataA6$ClosePrice/dataA6$OpenPrice)
+names(dataA6)<-c("TradingDate","Symbol","1","2","Return","Turnover Rate")
+dataA7 <- read_csv(namefile[7],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+)
+dataA7$LogReturn <- log(dataA7$ClosePrice/dataA7$OpenPrice)
+names(dataA7)<-c("TradingDate","Symbol","1","2","Return","Turnover Rate")
+```
+
+
+
+### 月度换手率
+分析各指标的基本情况，通过对换手率、消费者信心指数、
+```{r}
+
+library(psych)
+## AA
+d1<-describe(dataA1[,-1])
+d2<-describe(dataA2[,-1])
+d3<-describe(dataA3[,-1])
+d4<-describe(dataA4[,-1])
+d5<-describe(dataA5[,-1])
+d6<-describe(dataA6[,-1])
+d7<-describe(dataA7[,-1])
+
+## A
+
+d1
+d2
+d3
+d4
+d5
+d6
+d7
+```
+
+```{r}
+library(xts)
+## 600837    海通证券    金融	AA	8.50
+## 002371	北方华创	电子设备	AA	8.22
+## 600276	恒瑞医药	医药生物	AA	8.18
+## 002410	广联达	信息技术	AA	8.44
+## 600406    国电南瑞 电气设备	AA	8.62
+## 600600    青岛啤酒    食品饮料	AA	8.30
+## 601088    中国神华    化石能源	AA	8.21
+da1 <- xts(dataA7[["TurnoverRate1"]],dataA7[["TradingDate"]])
+plot(da1,main="Daily Trunover rate of 601088",
+major.ticks=NULL ,minor.ticks=NULL,
+grid.col = NA,
+format.labels="%Y"
+)
+
+da2 <- xts(dataA7[["LogReturn"]],dataA7[["TradingDate"]])
+plot(dataA1[["TradingDate"]],dataA1[["Turnover Rate"]],xlab="Trading Date",ylab="LogReturn",col="cornflowerblue",'l')
+plot(dataA2[["TradingDate"]],dataA2[["LogReturn"]],xlab="Trading Date",ylab="LogReturn",col="cornflowerblue",'l')
+plot(dataA3[["TradingDate"]],dataA3[["LogReturn"]],xlab="Trading Date",ylab="LogReturn",col="cornflowerblue",'l')
+plot(dataA4[["TradingDate"]],dataA4[["LogReturn"]],xlab="Trading Date",ylab="LogReturn",col="cornflowerblue",'l')
+plot(dataA5[["TradingDate"]],dataA5[["LogReturn"]],xlab="Trading Date",ylab="LogReturn",col="cornflowerblue",'l')
+plot(dataA6[["TradingDate"]],dataA6[["LogReturn"]],xlab="Trading Date",ylab="LogReturn",col="cornflowerblue",'l')
+plot(dataA7[["TradingDate"]],dataA7[["LogReturn"]],xlab="Trading Date",ylab="LogReturn",col="cornflowerblue",'l')
+
+```
+
+```{r}
+## AA
+cor(dataA01[,c(5,6)])
+cor(dataA02[,c(5,6)])
+cor(dataA03[,c(5,6)])
+cor(dataA04[,c(5,6)])
+cor(dataA05[,c(5,6)])
+cor(dataA06[,c(5,6)])
+cor(dataA07[,c(5,6)])
+
+library(zoo)
+library(PerformanceAnalytics)
+chart.Correlation(dataA1[,c(5,6)],histogram=TRUE,method="pearson",pch=10)
+chart.Correlation(dataA2[,c(5,6)],histogram=TRUE,method="pearson",pch=10)
+chart.Correlation(dataA3[,c(5,6)],histogram=TRUE,method="pearson",pch=10)
+chart.Correlation(dataA4[,c(5,6)],histogram=TRUE,method="pearson",pch=10)
+chart.Correlation(dataA5[,c(5,6)],histogram=TRUE,method="pearson",pch=10)
+chart.Correlation(dataA6[,c(5,6)],histogram=TRUE,method="pearson",pch=10)
+chart.Correlation(dataA7[,c(5,6)],histogram=TRUE,method="pearson",pch=10)
+
+## adf单位根检验——平稳性检验
+library(tseries)
+adf.test(dataA1$LogReturn) 
+adf.test(dataA2$LogReturn)
+adf.test(dataA3$LogReturn)
+adf.test(dataA4$LogReturn)
+adf.test(dataA5$LogReturn)
+adf.test(dataA6$LogReturn)
+adf.test(dataA7$LogReturn)
+
+## Ljung-Box-Q检验——是否为非线性相关的白噪声序列（是）
+Box.test(dataA1[,"LogReturn"],lag=13,type="Ljung-Box")
+Box.test(dataA2[,"LogReturn"],lag=13,type="Ljung-Box")
+Box.test(dataA3[,"LogReturn"],lag=13,type="Ljung-Box")
+Box.test(dataA4[,"LogReturn"],lag=13,type="Ljung-Box")
+Box.test(dataA5[,"LogReturn"],lag=13,type="Ljung-Box")
+Box.test(dataA6[,"LogReturn"],lag=13,type="Ljung-Box")
+Box.test(dataA7[,"LogReturn"],lag=13,type="Ljung-Box")
+
+## J-B test
+jarque.bera.test(dataA1$LogReturn)
+jarque.bera.test(dataA2$LogReturn)
+jarque.bera.test(dataA3$LogReturn)
+jarque.bera.test(dataA4$LogReturn)
+jarque.bera.test(dataA5$LogReturn)
+jarque.bera.test(dataA6$LogReturn)
+jarque.bera.test(dataA7$LogReturn)
+```
+
+```{r}
+## 线性回归得到残差序列
+
+f1 <- lm(dataA1$LogReturn ~ dataA1$TurnoverRate1, data=dataA1[,c(5,6)])
+f2 <- lm(dataA2$LogReturn ~ dataA2$TurnoverRate1, data=dataA2[,c(5,6)])
+f3 <- lm(dataA3$LogReturn ~ dataA3$TurnoverRate1, data=dataA3[,c(5,6)])
+f4 <- lm(dataA4$LogReturn ~ dataA4$TurnoverRate1, data=dataA4[,c(5,6)])
+f5 <- lm(dataA5$LogReturn ~ dataA5$TurnoverRate1, data=dataA5[,c(5,6)])
+f6 <- lm(dataA6$LogReturn ~ dataA6$TurnoverRate1, data=dataA6[,c(5,6)])
+f7 <- lm(dataA7$LogReturn ~ dataA7$TurnoverRate1, data=dataA7[,c(5,6)])
+## ARCH效应
+library(FinTS)
+ArchTest(residuals(f1))
+ArchTest(residuals(f2))
+ArchTest(residuals(f3))
+ArchTest(residuals(f4))
+ArchTest(residuals(f5))
+ArchTest(residuals(f6))
+ArchTest(residuals(f7))
+```
+EGARCH拟合
+```{r}
+library(tseries)
+library(rugarch)
+#library(VineCopula)
+library(fGarch)
+#library(zoo)
+#library(FinTS)
+#library(forecast)
+spec_m1<-ugarchspec(variance.model=list(model="eGARCH" #"egarch"
+                                        ,                                         garchOrder=c(1,1),submodel=NULL,external.regressors=NULL,
+                                         variance.targeting=FALSE),
+                     mean.model=list(armaOrder=c(0,0),
+                             external.regressors=as.matrix(dataA1[,6])),
+                    distribution.model="sstd",start.pars=list(),
+                     fixed.pars=list())
+garch_m1<-ugarchfit(spec=spec_m1,data=dataA1$LogReturn,solver='solnp')
+garch_m1 
+spec_m2<-ugarchspec(variance.model=list(model="eGARCH" #"eGARCH"
+                                        ,
+                    garchOrder=c(1,1),submodel=NULL,external.regressors=NULL,
+                   variance.targeting=FALSE),
+                   mean.model=list(armaOrder=c(0,0),
+                   external.regressors= as.matrix(dataA2[,6])
+                   ),
+                   distribution.model="sstd",start.pars=list(),
+                   fixed.pars=list())
+garch_m2<-ugarchfit(spec=spec_m2,data=dataA2$LogReturn,solver='solnp')
+garch_m2 
+spec_m3<-ugarchspec(variance.model=list(model="eGARCH" #"eGARCH"
+                                        ,
+                    garchOrder=c(1,1),submodel=NULL,external.regressors=NULL,
+                   variance.targeting=FALSE),
+                   mean.model=list(armaOrder=c(0,0),
+                   external.regressors=as.matrix(dataA3[,6])
+                   ),
+                   distribution.model="sstd",start.pars=list(),
+                   fixed.pars=list())
+garch_m3<-ugarchfit(spec=spec_m3,data=dataA3$LogReturn,solver='solnp')
+garch_m3 
+spec_m4<-ugarchspec(variance.model=list(model="eGARCH" #"eGARCH"
+                                        ,
+                    garchOrder=c(1,1),submodel=NULL,external.regressors=NULL,
+                   variance.targeting=FALSE),
+                   mean.model=list(armaOrder=c(0,0),
+                   external.regressors=as.matrix(dataA4[,6])
+                   ),
+                   distribution.model="sstd",start.pars=list(),
+                   fixed.pars=list())
+garch_m4<-ugarchfit(spec=spec_m4,data=dataA4$LogReturn,solver='solnp')
+garch_m4 
+spec_m5<-ugarchspec(variance.model=list(model="eGARCH" #"eGARCH"
+                                        ,
+                    garchOrder=c(1,1),submodel=NULL,external.regressors=NULL,
+                   variance.targeting=FALSE),
+                   mean.model=list(armaOrder=c(0,0),
+                   external.regressors=as.matrix(dataA5[,6])
+                   ),
+                   distribution.model="sstd",start.pars=list(),
+                   fixed.pars=list())
+garch_m5<-ugarchfit(spec=spec_m5,data=dataA5$LogReturn,solver='solnp')
+garch_m5 
+spec_m6<-ugarchspec(variance.model=list(model="eGARCH" #"eGARCH"
+                                        ,
+                    garchOrder=c(1,1),submodel=NULL,external.regressors=NULL,
+                   variance.targeting=FALSE),
+                   mean.model=list(armaOrder=c(0,0),
+                   external.regressors=as.matrix(dataA6[,6])
+                   ),
+                   distribution.model="sstd",start.pars=list(),
+                   fixed.pars=list())
+garch_m6<-ugarchfit(spec=spec_m6,data=dataA6$LogReturn,solver='solnp')
+garch_m6
+spec_m7<-ugarchspec(variance.model=list(model="eGARCH" #"eGARCH"
+                                        ,
+                    garchOrder=c(1,1),submodel=NULL,external.regressors=NULL,
+                   variance.targeting=FALSE),
+                   mean.model=list(armaOrder=c(0,0),
+                   external.regressors=as.matrix(dataA7[,6])
+                   ),
+                   distribution.model="sstd",start.pars=list(),
+                   fixed.pars=list())
+garch_m7<-ugarchfit(spec=spec_m7,data=dataA7$LogReturn,solver='solnp')
+garch_m7
+```
+均匀分布检验
+```{r}
+## 均匀分布检验
+##先得到标准化残差
+e1<-as.numeric(residuals(garch_m1,standardize=T))
+e2<-as.numeric(residuals(garch_m2,standardize=T))
+e3<-as.numeric(residuals(garch_m3,standardize=T))
+e4<-as.numeric(residuals(garch_m4,standardize=T))
+e5<-as.numeric(residuals(garch_m5,standardize=T))
+e6<-as.numeric(residuals(garch_m6,standardize=T))
+e7<-as.numeric(residuals(garch_m7,standardize=T))
+##转化为均匀分布
+u1<-psstd(e1,0,1,coef(garch_m1)[[8]],coef(garch_m1)[[7]])
+u2<-psstd(e2,0,1,coef(garch_m2)[[8]],coef(garch_m2)[[7]])
+u3<-psstd(e3,0,1,coef(garch_m3)[[8]],coef(garch_m3)[[7]])
+u4<-psstd(e4,0,1,coef(garch_m4)[[8]],coef(garch_m4)[[7]])
+u5<-psstd(e5,0,1,coef(garch_m5)[[8]],coef(garch_m5)[[7]])
+u6<-psstd(e6,0,1,coef(garch_m6)[[8]],coef(garch_m6)[[7]])
+u7<-psstd(e7,0,1,coef(garch_m7)[[8]],coef(garch_m7)[[7]])
+write(u1,"u1.csv")
+write(u2,"u2.csv")
+write(u3,"u3.csv")
+write(u4,"u4.csv")
+write(u5,"u5.csv")
+write(u6,"u6.csv")
+write(u7,"u7.csv")
+
+ks.test(u1,"punif")
+ks.test(u2,"punif")
+ks.test(u3,"punif")
+ks.test(u4,"punif")
+ks.test(u5,"punif")
+ks.test(u6,"punif")
+ks.test(u7,"punif")
+```
+
+R Vine Copula拟合
+```{r}
+## 导入 copuladata
+library(zoo)
+library(FinTS)
+library(forecast)
+library(VineCopula)
+library(CDVineCopulaConditional)
+copuladata <- read.csv("copuladataAll.csv",header=TRUE)
+
+library(VineCopula)
+library(copula)
+RVine=RVineStructureSelect(copuladata[,-1],
+                            family=c(1:6),
+                            type=0,
+                            selectioncrit = "AIC",
+                            progress=TRUE,
+                            se=TRUE,
+                            method='itau',rotations=TRUE)
+
+summary(RVine)
+library(network)
+
+RVMM <- RVineMatrix(Matrix=RVine$Matrix, family=RVine$family,
+                    par=RVine$par,par2=RVine$par2,names=RVine$names)
+#plot(RVMM)
+
+```
+
+```{r}
+plot.RVineMatrix <- function(x, tree = "ALL", type = 0, edge.labels = NULL,
+                             legend.pos = "bottomleft", interactive = FALSE, ...) {
+    if (!requireNamespace("network", quietly = TRUE))
+        stop("The 'network' package must be installed.")
+
+    M <- x$Matrix
+    d <- nrow(M)
+
+    ## sanity checks
+    if (!inherits(x, "RVineMatrix"))
+        stop("'x' has to be an RVineMatrix object.")
+    if (tree != "ALL" && tree > d - 1)
+        stop("Selected tree does not exist.")
+    if (any(tree == "ALL") )
+        tree <- 1:(d - 1)
+    if (!all(type %in% c(0, 1, 2)))
+        stop("type not implemented")
+    stopifnot(is.logical(interactive))
+
+    ## set names if empty
+    if (is.null(x$names))
+        x$names <- paste("V", 1:d, sep = "")
+
+    #### set up plotting options ----------------------------
+    # reduce default margins of plot range
+    usr <- par(mar = c(1.1,0.1,3.1,0.1))
+    on.exit(par(usr))
+
+    # set plot.network options
+    # TUMblue <- rgb(0, 103/255, 198/255)
+    # TUMlightblue <- tint(TUMblue, 0.5)
+    dflt <- list(interactive = interactive,
+                 displaylabels = TRUE,
+                 pad = 1.5e-1,
+                 edge.lwd = 0.25,
+                 edge.col = "black",
+                 boxed.labels = TRUE,
+                 label.pad = 1.5,
+                 label.bg = "white",
+                 label.pos = 7,
+                 label.col = "black",
+                 label.cex = 1.3,
+                 vertex.cex = 0,
+                 object.scale = 0.05)
+    # Same color for edges, edge labels and label borders
+    dflt <- append(dflt, list(label.border   = dflt$edge.col,
+                              edge.label.col = dflt$edge.col,
+                              edge.label.cex = dflt$label.cex - 0.2))
+
+    ## overwrite defaults with ... argument
+    temp.args <- modifyList(dflt, list(...))
+
+    #### loop through the trees -----------------------------
+    for (i in tree) {
+
+        main <- list(main = paste("Tree ", i, sep = ""),
+                     col.main = ifelse("col.main" %in% names(temp.args),
+                                       temp.args$col.main,
+                                       temp.args$edge.col))
+        final.args <- append(temp.args, main)
+
+        ## create network object
+        g <- makeNetwork(x, i, !(type %in% c(0, 2)))
+        final.args$x = g$nw
+
+        ## set edge labels
+        if (!is.null(edge.labels))
+            final.args$edge.label <- set_edge_labels(tree = i,
+                                                     RVM = x,
+                                                     edge.labels = edge.labels,
+                                                     type = type)
+
+        do.call(plot, final.args)
+
+        ## add legend
+        if (type == 2) {
+            legend(legend.pos,
+                   legend = paste(1:d, x$name, sep = " \U002194 "),
+                   bty = "n",
+                   xjust = 0,
+                   text.col = final.args$edge.col,
+                   cex = final.args$label.cex)
+        }
+
+        ## wait for key stroke
+        if (i != max(tree)) {
+            par(ask = TRUE)
+        } else {
+            par(ask = FALSE)
+        }
+    }
+}
+## creates a network object for a tree in a given RVineMatrix ------------------
+makeNetwork <- function(RVM, tree, use.names = FALSE) {
+    M <- RVM$Matrix
+    d <- ncol(M)
+
+    I <- matrix(0, d - tree + 1, d - tree + 1)
+
+    ## extract node and edge labels as numbers
+    if (tree > 1) {
+        node.lab <- sapply(1:(d - tree + 1),
+                           get_num,
+                           tree = tree - 1,
+                           RVM = RVM)
+    } else {
+        node.lab <- paste(diag(M))
+    }
+    edge.lab <- sapply(seq.int(d - tree),
+                       get_num,
+                       tree = tree,
+                       RVM = RVM)
+
+    ## convert to numeric matrices V and E
+    V <- t(sapply(strsplit(node.lab,  " *[,;] *"), as.numeric))
+    V <- matrix(V, ncol = tree)
+    E <- t(sapply(strsplit(edge.lab,  " *[,;] *"), as.numeric))
+
+    ## build incident matrix by matching V and E
+    for (i in 1:nrow(E)) {
+        ind.i <- which(apply(V, 1, function(x) all(x %in% E[i, ])))
+        I[ind.i[1], ind.i[2]] <- I[ind.i[1], ind.i[2]] <- 1
+    }
+
+    ## convert to variable names (if asked for)
+    if (use.names) {
+        if (tree > 1) {
+            node.lab <- sapply(1:(d - tree + 1),
+                               get_name,
+                               tree = tree - 1,
+                               RVM = RVM)
+        } else {
+            node.lab <- RVM$names[diag(M)]
+        }
+    }
+
+    ## create network
+    colnames(I) <- rownames(I) <- node.lab
+    nw <- network::network(I, directed = FALSE)
+
+    ## return network and labels
+    list(nw = nw, vlabs = node.lab)
+}
+
+
+## finds appropriate edge labels for the plot ----------------------------------
+set_edge_labels <- function(tree, RVM, edge.labels, type) {
+    d <- nrow(RVM$Matrix)
+    if (edge.labels[1] == "family") {
+        elabel <- sapply(1:(d - tree + 1),
+                         get_family,
+                         tree = tree,
+                         RVM = RVM)
+        elabel <- BiCopName(as.numeric(elabel))
+    } else if (edge.labels[1] == "par") {
+        elabel <- sapply(1:(d - tree + 1),
+                          get_par,
+                          tree = tree,
+                          RVM = RVM)
+    } else if (edge.labels[1] == "tau") {
+        elabel <- sapply(1:(d - tree + 1),
+                         get_tau,
+                         tree = tree,
+                         RVM = RVM)
+    } else if (edge.labels[1] == "family-par") {
+        elabel1 <- sapply(1:(d - tree + 1),
+                          get_family,
+                          tree = tree,
+                          RVM = RVM)
+        elabel1 <- BiCopName(as.numeric(elabel1))
+        elabel2 <- sapply(1:(d - tree + 1),
+                          get_par,
+                          tree = tree,
+                          RVM = RVM)
+        elabel <- paste0(elabel1, "(", elabel2, ")")
+        elabel <- sapply(elabel,
+                         function(x){
+                             tmp <- gsub("((", "(", x, fixed = TRUE)
+                             gsub("))", ")", tmp, fixed = TRUE)
+                         })
+    } else if (edge.labels[1] == "family-tau") {
+        elabel1 <- sapply(1:(d - tree + 1),
+                          get_family,
+                          tree = tree,
+                          RVM = RVM)
+        elabel1 <- BiCopName(as.numeric(elabel1))
+        elabel2 <- sapply(1:(d - tree + 1),
+                          get_tau,
+                          tree = tree,
+                          RVM = RVM)
+        elabel <- paste0(elabel1, "(", elabel2, ")")
+    } else if (length(edge.labels) > 1) {
+        # user may provide own labels
+        if (length(edge.labels) == d - tree) {
+            elabel <- as.character(edge.labels)
+        } else {
+            stop("length of edge.labels does not equal the number of edges in the tree")
+        }
+    } else if (edge.labels[1] == "pair"){
+        if (type %in% c(0, 2)) {
+            elabel <- sapply(1:(d - tree + 1),
+                             get_num,
+                             tree = tree,
+                             RVM = RVM)
+        } else {
+            elabel <- sapply(1:(d - tree + 1),
+                             get_name,
+                             tree = tree,
+                             RVM = RVM)
+        }
+    } else {
+        stop("edge.labels not implemented")
+    }
+
+    elabel
+}
+
+
+## get info for a pair-copula from RVineMatrix object --------------------------
+get_num <-  function(j, tree, RVM) {
+    M <- RVM$Matrix
+    d <- nrow(M)
+    # get numbers from structure matrix
+    nums <- as.character(M[c(j, (d - tree + 1):d), j])
+    # conditioned set
+    bef <- paste(nums[2],
+                 nums[1],
+                 sep = ",",
+                 collapse = "")
+    # conditioning set
+    aft <- if (length(nums) > 2) {
+        gsub(" ",
+             ",",
+             do.call(paste, as.list(as.character(nums[3:length(nums)]))))
+    }  else ""
+    # paste together
+    sep <- if (length(nums) > 2) " ; " else ""
+    paste(bef, aft, sep = sep, collapse = "")
+}
+
+get_name <-  function(j, tree, RVM) {
+    M <- RVM$Matrix
+    d <- nrow(M)
+    # variable names
+    nams <- RVM$names[M[c(j, (d - tree + 1):d), j]]
+    # conditioned set
+    bef <- paste(nams[2],
+                 nams[1],
+                 sep = ",",
+                 collapse = "")
+    # conditioning set
+    aft <- if (length(nams) > 2) {
+        gsub(" ",  ",", do.call(paste, as.list(nams[3:length(nams)])))
+    }  else ""
+    # paste together
+    sep <- if (length(nams) > 2) " ; " else ""
+    paste(bef, aft, sep = sep, collapse = "")
+}
+
+get_family <- function(j, tree, RVM) {
+    d <- nrow(RVM$family)
+    paste(RVM$family[d - tree + 1, j])
+}
+
+get_par <- function(j, tree, RVM) {
+    d <- nrow(RVM$family)
+    # get parameters
+    par  <- round(RVM$par[d - tree + 1, j], digits = 2)
+    par2 <- round(RVM$par2[d - tree + 1, j], digits = 2)
+    # add brackets if par2 != 0
+    apply(cbind(par, par2), 1, join_par)
+}
+
+join_par <- function(x) {
+    if (x[2] != 0)
+        return(paste0("(", x[1], ",", x[2], ")"))
+    x[1]
+}
+
+get_tau <- function(j, tree, RVM) {
+    round(RVM$tau[nrow(RVM$tau) - tree + 1, j], digits = 2)
+}
+plot.RVineMatrix(RVMM)
+```
+
+```{r}
+# 基于蒙特卡罗模拟法计算VaR
+hist(dataA1$TurnoverRate1, xlab = 'turnoverate', ylab='Frequency', main=NULL,col = 'yellow', border = 'black')
+hist(dataA2$TurnoverRate1, xlab = 'turnoverate', ylab='Frequency', main=NULL,col = 'yellow', border = 'black')
+hist(dataA3$TurnoverRate1, xlab = 'turnoverate', ylab='Frequency', main=NULL,col = 'yellow', border = 'black')
+hist(dataA4$TurnoverRate1, xlab = 'turnoverate', ylab='Frequency', main=NULL,col = 'yellow', border = 'black')
+hist(dataA5$TurnoverRate1, xlab = 'turnoverate', ylab='Frequency',main=NULL, col = 'yellow', border = 'black')
+hist(dataA6$TurnoverRate1, xlab = 'turnoverate', ylab='Frequency', main=NULL,col = 'yellow', border = 'black')
+hist(dataA7$TurnoverRate1, xlab = 'turnoverate', ylab='Frequency', main=NULL,col = 'yellow', border = 'black')
+## 拟合换手率的分布
+library(fitdistrplus)
+sent_fit1 <- fitdist(dataA01$TurnoverRate1,"gamma")
+summary(sent_fit1)
+sent_fit2 <- fitdist(dataA02$TurnoverRate1,"gamma")
+summary(sent_fit2)
+sent_fit3 <- fitdist(dataA03$TurnoverRate1,"gamma")
+summary(sent_fit3)
+sent_fit4 <- fitdist(dataA04$TurnoverRate1,"gamma")
+summary(sent_fit4)
+sent_fit5 <- fitdist(dataA05$TurnoverRate1,"gamma")
+summary(sent_fit5)
+sent_fit6 <- fitdist(dataA06$TurnoverRate1,"gamma")
+summary(sent_fit6)
+sent_fit7 <- fitdist(dataA07$TurnoverRate1,"gamma")
+summary(sent_fit7)
+```
+## 基于蒙特卡洛模拟法计算VaR
+### 模拟计算投资者情绪
+```{r}
+## 随机生成v_ij
+v <- RVineSim(10000,RVMM)
+set.seed(1234)
+sent1 <- runif(10000,0,0.1)
+sent2 <- runif(10000,0,0.1)
+sent3 <- runif(10000,0,0.1)
+sent4 <- runif(10000,0,0.1)
+sent5 <- runif(10000,0,0.1)
+sent6 <- runif(10000,0,0.1)
+sent7 <- runif(10000,0,0.1)
+```
+### 模拟计算收益率序列_基于Vine Copula
+```{r}
+
+## 对每一列求逆得到均值方程的标准化残差序列 epsilon_t
+
+# epsilon1<-qsstd(v[,1],nu=coef(garch_m1)[8],xi=coef(garch_m1)[7])
+# epsilon2<-qsstd(v[,2],nu=coef(garch_m2)[8],xi=coef(garch_m2)[7])
+# epsilon3<-qsstd(v[,3],nu=coef(garch_m3)[8],xi=coef(garch_m3)[7])
+# epsilon4<-qsstd(v[,4],nu=coef(garch_m4)[8],xi=coef(garch_m4)[7])
+# epsilon5<-qsstd(v[,5],nu=coef(garch_m5)[8],xi=coef(garch_m5)[7])
+# epsilon6<-qsstd(v[,6],nu=coef(garch_m6)[8],xi=coef(garch_m6)[7])
+# epsilon7<-qsstd(v[,7],nu=coef(garch_m7)[8],xi=coef(garch_m7)[7])
+## 不考虑Vine Copula结构
+epsilon1<-rsstd(10000,nu=coef(garch_m1)[8],xi=coef(garch_m1)[7])
+epsilon2<-rsstd(10000,nu=coef(garch_m2)[8],xi=coef(garch_m2)[7])
+epsilon3<-rsstd(10000,nu=coef(garch_m3)[8],xi=coef(garch_m3)[7])
+epsilon4<-rsstd(10000,nu=coef(garch_m4)[8],xi=coef(garch_m4)[7])
+epsilon5<-rsstd(10000,nu=coef(garch_m5)[8],xi=coef(garch_m5)[7])
+epsilon6<-rsstd(10000,nu=coef(garch_m6)[8],xi=coef(garch_m6)[7])
+epsilon7<-rsstd(10000,nu=coef(garch_m7)[8],xi=coef(garch_m7)[7])
+
+sigma1t <- as.numeric(sigma(garch_m1))
+sigma2t <- as.numeric(sigma(garch_m2))
+sigma3t <- as.numeric(sigma(garch_m3))
+sigma4t <- as.numeric(sigma(garch_m4))
+sigma5t <- as.numeric(sigma(garch_m5))
+sigma6t <- as.numeric(sigma(garch_m6))
+sigma7t <- as.numeric(sigma(garch_m7))
+##标准化残差转化为残差
+sigma1 <- exp(coef(garch_m1)[3]+ #omega
+                coef(garch_m1)[4]*epsilon1+ #alpha_1 epsilon_{t-1}
+                coef(garch_m1)[6]*abs(epsilon1)+ #gamma_1 |epsilon_{t-1}|
+                coef(garch_m1)[5]*log(sigma1t[nrow(sigma(garch_m1))])
+              )
+sigma2 <- exp(coef(garch_m2)[3]+ #omega
+                coef(garch_m2)[4]*epsilon2+ #alpha_1 epsilon_{t-1}
+                coef(garch_m2)[6]*abs(epsilon2)+ #gamma_1 |epsilon_{t-1}|
+                coef(garch_m2)[5]*log(sigma2t[nrow(sigma(garch_m2))])
+              )
+sigma3 <-exp(coef(garch_m3)[3]+ #omega
+                coef(garch_m3)[4]*epsilon3+ #alpha_1 epsilon_{t-1}
+                coef(garch_m3)[6]*abs(epsilon3)+ #gamma_1 |epsilon_{t-1}|
+                coef(garch_m3)[5]*log(sigma3t[nrow(sigma(garch_m3))])
+              )
+sigma4 <- exp(coef(garch_m4)[3]+ #omega
+                coef(garch_m4)[4]*epsilon4+ #alpha_1 epsilon_{t-1}
+                coef(garch_m4)[6]*abs(epsilon4)+ #gamma_1 |epsilon_{t-1}|
+                coef(garch_m4)[5]*log(sigma4t[nrow(sigma(garch_m4))])
+              )
+sigma5 <-exp(coef(garch_m5)[3]+ #omega
+                coef(garch_m5)[4]*epsilon5+ #alpha_1 epsilon_{t-1}
+                coef(garch_m5)[6]*abs(epsilon5)+ #gamma_1 |epsilon_{t-1}|
+                coef(garch_m5)[5]*log(sigma5t[nrow(sigma(garch_m5))])
+              )
+sigma6 <-exp(coef(garch_m6)[3]+ #omega
+                coef(garch_m6)[4]*epsilon6+ #alpha_1 epsilon_{t-1}
+                coef(garch_m6)[6]*abs(epsilon6)+ #gamma_1 |epsilon_{t-1}|
+                coef(garch_m6)[5]*log(sigma6t[nrow(sigma(garch_m6))])
+              )
+sigma7 <- exp(0.5*coef(garch_m7)[3]+ #omega
+                0.5*coef(garch_m7)[4]*epsilon7+ #alpha_1 epsilon_{t-1}
+                 0.5*coef(garch_m7)[6]*abs(epsilon7)+ #gamma_1 |epsilon_{t-1}|
+                coef(garch_m7)[5]*log(sigma7t[nrow(sigma(garch_m7))])
+              )
+epsilon1 <- epsilon1*sigma1
+epsilon2 <- epsilon2*sigma2
+epsilon3 <- epsilon3*sigma3
+epsilon4 <- epsilon4*sigma4
+epsilon5 <- epsilon5*sigma5
+epsilon6 <- epsilon6*sigma6
+epsilon7 <- epsilon7*sigma7
+
+## 求收益率序列
+r1=(as.numeric( coef(garch_m1)[1]))
+for (i in 2:10001){
+  r1[i]=(as.numeric( coef(garch_m1)[1]))+(as.numeric(coef(garch_m1)[2]))*sent1[i-1]+epsilon1[i-1]
+  #  if(r1[i]>0)
+  # {r1[i]=(1+sent1[i]*0.85)*r1[i]}
+  # else
+  # {  r1[i]=(1-sent1[i]*0.85)*r1[i]}
+  #r1[i] = sent1[i]*0.85*r1[i]
+  }
+#r1就是仿真得到的10001组数据
+r2=(as.numeric( coef(garch_m2)[1]))
+for (i in 2:10001){
+  r2[i]=(as.numeric( coef(garch_m2)[1]))+(as.numeric( coef(garch_m2)[2]))*sent2[i-1]+epsilon2[i-1]
+  #  if(r2[i]>0)
+  # {r2[i]=(1+sent2[i]*0.85)*r2[i]}
+  # else
+  # {  r2[i]=(1-sent2[i]*0.85)*r2[i]}
+  #r2[i] = sent2[i]*0.85*r2[i]
+}
+r3=(as.numeric( coef(garch_m3)[1]))
+for (i in 2:10001){
+  r3[i]=(as.numeric( coef(garch_m3)[1]))+(as.numeric( coef(garch_m3)[2]))*sent3[i-1]+epsilon3[i-1]
+  #  if(r3[i]>0)
+  # {r3[i]=(1+sent3[i]*0.85)*r3[i]}
+  # else
+  # {  r3[i]=(1-sent3[i]*0.85)*r3[i]}
+  #r3[i] = sent3[i]*0.85*r3[i]
+}
+r4=(as.numeric( coef(garch_m4)[1]))
+for (i in 2:10001)
+{  r4[i]=(as.numeric( coef(garch_m4)[1]))+(as.numeric( coef(garch_m4)[2]))*sent4[i-1]+epsilon4[i-1]
+ # if(r4[i]>0)
+ #  {r4[i]=(1+sent4[i]*0.85)*r4[i]}
+ #  else
+ #  {  r4[i]=(1-sent4[i]*0.85)*r4[i]}
+#r4[i] = sent4[i]*0.85*r4[i]
+}
+r5=(as.numeric( coef(garch_m5)[1]))
+for (i in 2:10001)
+{  r5[i]=(as.numeric( coef(garch_m5)[1]))+(as.numeric( coef(garch_m5)[2]))*sent5[i-1]+epsilon5[i-1]
+ # if(r5[i]>0)
+ #  {r5[i]=(1+sent5[i]*0.85)*r5[i]}
+ #  else
+ #  {  r5[i]=(1-sent5[i]*0.85)*r5[i]}
+#r5[i] = sent5[i]*0.85*r5[i]
+}
+r6=(as.numeric( coef(garch_m6)[1]))
+for (i in 2:10001)
+{  r6[i]=(as.numeric( coef(garch_m6)[1]))+(as.numeric( coef(garch_m6)[2]))*sent6[i-1]+epsilon6[i-1]
+ # if(r6[i]>0)
+ #  {r6[i]=(1+sent6[i]*0.85)*r6[i]}
+ #  else
+ #  {  r6[i]=(1-sent6[i]*0.85)*r6[i]}
+#r6[i] = sent6[i]*0.85*r6[i]
+}
+
+r7=(as.numeric( coef(garch_m7)[1]))
+for (i in 2:10001)
+ { r7[i]=(as.numeric( coef(garch_m7)[1]))+(as.numeric( coef(garch_m7)[2]))*sent7[i-1]+epsilon7[i-1]
+  # if(r7[i]>0)
+  # {r7[i]=(1+sent7[i]*0.85)*r7[i]}
+  # else
+  # {  r7[i]=(1-sent7[i]*0.85)*r7[i]}
+# r7[i] = sent7[i]*0.85*r7[i]
+}
+R <- (r1+r2+r3+r4+r5+r6+r7)/7
+#R <- (r1+r2+r3+r4+r5+r6)/6
+
+r1rank<-sort(r1)#由小到大排序
+r2rank<-sort(r2)
+r3rank<-sort(r3)
+r4rank<-sort(r4)
+r5rank<-sort(r5)
+r6rank<-sort(r6)
+ r7rank<-sort(r7)
+Rrank <- sort(R)
+```
+
+
+### 计算VaR
+```{r}
+
+#r1rank[9500]#他就是上5%分位点
+Rrank[500]
+mean(Rrank[1:500])
+
+r1rank[500]#他就是下5%分位点
+mean(r1rank[1:500])
+#r2rank[9500]#他就是上5%分位点
+r2rank[500]#
+mean(r2rank[1:500])
+r3rank[500]#
+mean(r3rank[1:500])
+r4rank[500]#
+mean(r4rank[1:500])
+r5rank[500]#
+mean(r5rank[1:500])
+r6rank[500]#
+mean(r6rank[1:500])
+r7rank[500]
+mean(r7rank[1:500])
+
+```
+
+### 后向检验使用滚动窗口的蒙特卡洛模拟实现VaRTest
+```{r}
+## 使用滚动窗口的蒙特卡洛模拟实现VaRTest
+library(tidyverse)
+library(lubridate)
+
+#library(CDVineCopulaConditional)
+
+
+backfilename <- c("backtesting_600837.csv","backtesting_002371.csv",
+                 "backtesting_600276.csv","backtesting_002410.csv",
+                 "backtesting_600406.csv","backtesting_600600.csv",
+                 "backtesting_601088.csv")
+# # #ESG评级为A
+backfilename <- c("backtesting_601688.csv","backtesting_002475.csv",
+                  "backtesting_600196.csv","backtesting_000063.csv",
+                  "backtesting_300274.csv","backtesting_000895.csv","backtesting_600188.csv")
+#ESG评级为BBB
+backfilename <- c("backtesting_000776.csv","backtesting_002179.csv",
+           "backtesting_000538.csv","backtesting_600050.csv",
+"backtesting_002074.csv","backtesting_600809.csv","backtesting_601857.csv")
+#ESG评级为BB
+backfilename <- c("backtesting_601628.csv","backtesting_002049.csv",
+                 "backtesting_002252.csv","backtesting_002459.csv",
+                 "backtesting_000568.csv","backtesting_600346.csv")
+
+backdataA1 <- read_csv(backfilename[1],
+                   col_types=cols(
+                     TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+    )
+backdataA2 <- read_csv(backfilename[2],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+)
+backdataA3 <- read_csv(backfilename[3],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+)
+backdataA4 <- read_csv(backfilename[4],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double()
+)
+    )
+backdataA5 <- read_csv(backfilename[5],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double()))
+backdataA6 <- read_csv(backfilename[6],col_types=cols(
+    TradingDate=col_date(format="%Y/%m/%d"),
+    .default=col_double())
+    )
+# backdataA7 <- read_csv(backfilename[7],col_types=cols(
+#     TradingDate=col_date(format="%Y/%m/%d"),
+#     .default=col_double())
+# )
+```
+
+```{r}
+#后100天数据预测
+library(zoo)
+library(FinTS)
+library(forecast) 
+library(fGarch)
+library(VineCopula)
+library(copula)
+library(network)
+edgefit <- function(mx){
+  spec_mx<-ugarchspec(variance.model=list(model="eGARCH",
+                      garchOrder=c(1,1),submodel=NULL,external.regressors=NULL,
+                                         variance.targeting=FALSE),
+                     mean.model=list(armaOrder=c(0,0),
+                    external.regressors=as.matrix(mx[,3])),
+                    distribution.model="sstd",start.pars=list(),
+                     fixed.pars=list())
+  garch_mx<-ugarchfit(spec=spec_mx,data=mx$LogReturn,solver='solnp')
+  return(garch_mx)
+}
+retest <- function(garch_testx, v,i,sentx){
+  sentx <- as.numeric(sentx)
+ epsilonx<-qsstd(v[,i],nu=coef(garch_testx)[8],xi=coef(garch_testx)[7])
+  # epsilonx <- v[,i]
+  sigma1t <- as.numeric(sigma(garch_testx))
+  ##标准化残差转化为残差
+  sigmax <- exp(coef(garch_testx)[3]+ #omega
+                coef(garch_testx)[4]*epsilon1+ #alpha_1 epsilon_{t-1}
+                coef(garch_testx)[6]*abs(epsilon1)+ #gamma_1 |epsilon_{t-1}|
+                coef(garch_testx)[5]*log(sigma1t[nrow(sigma(garch_testx))])
+              )
+
+  epsilonx <- epsilonx*sigmax
+
+  rx=(as.numeric( coef(garch_testx)[1]))
+  for (i in 2:10001)
+  {   rx[i]=(as.numeric( coef(garch_testx)[1]))+(as.numeric(coef(garch_testx)[2]))*sentx+epsilonx[i-1]
+ #  if(rx[i]>0)
+ #  {rx[i]=1.85*rx[i]}
+ #  else
+ #  {  rx[i]=0.15*rx[i]}
+  }
+  return (rx[-1])
+}
+R_real<-matrix(0,nrow=1,ncol=100)
+R95_test<-matrix(0,nrow=1,nco=100)
+R975_test<-matrix(0,nrow=1,nco=100)
+R99_test<-matrix(0,nrow=1,ncol=100)
+R90_test<-matrix(0,nrow=1,ncol=100)
+R_model<-matrix(0,nrow=100,ncol=6)
+#第i天的VaR由前N天的数据求得
+for (i in 1:100){
+  t1 <- 582+i
+   t2 <- 1622+i
+  # t1 <- 1245+i
+  # t2 <- 2285+i
+  # t1 <- 1095+i
+  # t2 <- 2135+i
+  # t1 <- 661+i
+  # t2 <- 1601+i
+  # t1 <- 1396+i
+  # t2 <- 2436+i
+  #拟合收益率
+  garch_test1 <- edgefit(backdataA1[t1:t2,])
+  garch_test2 <- edgefit(backdataA2[t1:t2,])
+  garch_test3 <- edgefit(backdataA3[t1:t2,])
+  garch_test4 <- edgefit(backdataA4[t1:t2,])
+  garch_test5 <- edgefit(backdataA5[t1:t2,])
+  garch_test6 <- edgefit(backdataA6[t1:t2,])
+  # garch_test7 <- edgefit(backdataA7[t1:t2,])
+  
+  e_test <-matrix(0,nrow=1041,ncol=6)
+  # 标准化收益率残差
+e_test[,1]<-as.numeric(residuals(garch_test1,standardize=T))
+e_test[,2]<-as.numeric(residuals(garch_test2,standardize=T))
+e_test[,3]<-as.numeric(residuals(garch_test3,standardize=T))
+e_test[,4]<-as.numeric(residuals(garch_test4,standardize=T))
+e_test[,5]<-as.numeric(residuals(garch_test5,standardize=T))
+e_test[,6]<-as.numeric(residuals(garch_test6,standardize=T))
+# e_test[,7]<-as.numeric(residuals(garch_test7,standardize=T))
+
+ #残差转化成均匀分布
+  u_test <-matrix(0,nrow=1041,ncol=6)
+u_test[,1]<-psstd(e_test[,1],0,1,coef(garch_test1)[[8]],coef(garch_test1)[[7]])
+u_test[,2]<-psstd(e_test[,2],0,1,coef(garch_test2)[[8]],coef(garch_test2)[[7]])
+u_test[,3]<-psstd(e_test[,3],0,1,coef(garch_test3)[[8]],coef(garch_test3)[[7]])
+u_test[,4]<-psstd(e_test[,4],0,1,coef(garch_test4)[[8]],coef(garch_test4)[[7]])
+u_test[,5]<-psstd(e_test[,5],0,1,coef(garch_test5)[[8]],coef(garch_test5)[[7]])
+u_test[,6]<-psstd(e_test[,6],0,1,coef(garch_test6)[[8]],coef(garch_test6)[[7]])
+# u_test[,7]<-psstd(e_test[,7],0,1,coef(garch_test7)[[8]],coef(garch_test7)[[7]])
+
+  RVine=RVineStructureSelect(u_test,
+                            family=c(1:6),
+                            type=0,
+                            selectioncrit = "AIC",
+                            progress=TRUE,
+                            se=TRUE,
+                            method='itau',rotations=TRUE)
+  #summary(RVine) #RVine 拟合收益率序列
+  RVMMtest <- RVineMatrix(Matrix=RVine$Matrix, family=RVine$family,                   par=RVine$par,par2=RVine$par2,names=RVine$names)
+# #plot(RVMM)
+
+## 随机生成v_ij
+v <- RVineSim(10000,RVMMtest)
+#  v <-matrix(0,nrow=10000,ncol=7)
+# v[,1]<-rsstd(10000,nu=coef(garch_test1)[8],xi=coef(garch_test1)[7])
+# v[,2]<-rsstd(10000,nu=coef(garch_test2)[8],xi=coef(garch_test2)[7])
+# v[,3]<-rsstd(10000,nu=coef(garch_test3)[8],xi=coef(garch_test3)[7])
+# v[,4]<-rsstd(10000,nu=coef(garch_test4)[8],xi=coef(garch_test4)[7])
+# v[,5]<-rsstd(10000,nu=coef(garch_test5)[8],xi=coef(garch_test5)[7])
+# v[,6]<-rsstd(10000,nu=coef(garch_test6)[8],xi=coef(garch_test6)[7])
+# v[,7]<-rsstd(10000,nu=coef(garch_test7)[8],xi=coef(garch_test7)[7])
+
+#边缘分布模型返回收益率
+R_test <- matrix(0,nrow=10000,ncol=6)
+R_test[,1] <- retest(garch_test1, v, 1,backdataA1[t2+1,3])
+R_test[,2] <- retest(garch_test2, v, 2,backdataA2[t2+1,3])
+R_test[,3] <- retest(garch_test3, v, 3,backdataA3[t2+1,3])
+R_test[,4] <- retest(garch_test4, v, 4,backdataA4[t2+1,3])
+R_test[,5] <- retest(garch_test5, v, 5,backdataA5[t2+1,3])
+R_test[,6] <- retest(garch_test6, v, 6,backdataA6[t2+1,3])
+# R_test[,7] <- retest(garch_test7, v, 7,backdataA7[t2+1,3])
+
+
+# R_real[i] <- (as.numeric(backdataA1[t2+1,2])+
+#                 as.numeric(backdataA2[t2+1,2])+
+#                 as.numeric(backdataA3[t2+1,2])+
+#                 as.numeric(backdataA4[t2+1,2])+
+#                 as.numeric(backdataA5[t2+1,2])+
+#                 as.numeric(backdataA6[t2+1,2])+
+# as.numeric(backdataA7[t2+1,2]))/7
+R_real[i] <- (as.numeric(backdataA1[t2+1,2])+
+               as.numeric(backdataA2[t2+1,2])+
+               as.numeric(backdataA3[t2+1,2])+
+               as.numeric(backdataA4[t2+1,2])+
+               as.numeric(backdataA5[t2+1,2])+
+               as.numeric(backdataA6[t2+1,2]))/6
+
+# avgR_test <- R_test %*% c(1/7,1/7,1/7,1/7,1/7,1/7,1/7) #等权投资组合
+avgR_test <- R_test %*% c(1/6,1/6,1/6,1/6,1/6,1/6)
+savgR <- sort(avgR_test)
+
+R90_test[i] <- savgR[1000]
+R95_test[i] <- savgR[500]
+R975_test[i] <- savgR[250]
+R99_test[i] <- savgR[100]
+
+R_model[i,1] <- mean(R_test[,1])
+R_model[i,2] <- mean(R_test[,2])
+R_model[i,3] <- mean(R_test[,3])
+R_model[i,4] <- mean(R_test[,4])
+R_model[i,5] <- mean(R_test[,5])
+R_model[i,6] <- mean(R_test[,6])
+# R_model[i,7] <- mean(R_test[,7])
+}
+```
+
+```{r}
+#######    VaRdata:VaR序列
+#######    N:失败次数
+#######    T:总次数
+#######    p:计算VaR值所对应的置信水平
+#######    con.level:VaR.back.test所对应的显著性水平
+VaR.back.test <- function(xdata,VaRdata,p,con.level){
+p=p;
+con.level=con.level;
+prob=1-p;
+xdata=-xdata;
+VaRdata=-VaRdata;
+N=sum(xdata>VaRdata);
+T=length(xdata);
+LR_POF=-2*log((prob)^N*((1-prob)^(T-N)))+2*log(((N/T)^N)*(1-N/T)^(T-N));
+critical=qchisq(con.level,df=1);
+P_value=pchisq(LR_POF,df=1,lower.tail=F);
+list(N,LR_POF,P_value,critical)
+}
+VaR.back.test(R_real, R90_test,0.90,0.95)
+qchisq(1-0.9,1)
+VaR.back.test(R_real, R95_test,0.95,0.95)
+VaR.back.test(R_real, R975_test,0.975,0.95)
+VaR.back.test(R_real, R99_test,0.99,0.95)
+```
+
+```{r}
+library(ggplot2)
+library(xts)
+time_test <- backdataA2$TradingDate[(t2-98):(t2+1)]
+data_plot <- data.frame(time_test, t(R_real), t(R90_test),t(R95_test),t(R975_test),t(R99_test))
+names(data_plot) <- c("TradingDate", "Returns", "VaR1","VaR2","VaR3","VaR4")
+Returns <- xts(data_plot[["Returns"]],data_plot[["TradingDate"]])
+VaR <- xts(data_plot[["VaR"]],data_plot[["TradingDate"]])
+#VaRTest(0.05,as.numeric(R_real),as.numeric(R975_test),0.95)
+# varpic <- VaRplot(alpha=0.01, actual=Returns, VaR, title = paste("Daily Returns and Value-at-Risk Exceedances\n","(alpha=", alpha,")",sep=""), ylab = "Daily Log Returns", 
+# xlab = "Time")
+
+plot(data_plot$Returns,type='l',col="blue",ylim=c(-0.03,0.03),ylab="Return",xlab="Date")
+lines(data_plot$VaR1,type='l',col="red")
+lines(data_plot$VaR2,type='l',col="hotpink")
+lines(data_plot$VaR3,type='l',col="gold")
+lines(data_plot$VaR4,type='l',col="springgreen3")
+
+```
+在投资组合中各市场投资权重未知时，随机生成10000个1行7列的权重向量，模拟投资组合的可行域，并计算投资组合有效前沿。
+r1\r2\r3\r4\r5\r6\r7
+```{r}
+returnAA_monte <- cbind(r1,r2,r3,r4,r5,r6,r7)
+```
+
+```{r}
+#检查是否全部都安装了否则自动安装
+if(!require(tseries)){install.packages("tseries")}
+if(!require(outliers)){install.packages("outliers")}
+if(!require(zoo)){install.packages("zoo")}
+if(!require(dygraphs)){install.packages("dygraphs")}
+if(!require(fPortfolio)){install.packages("fPortfolio")}
+if(!require(Tushare)){install.packages("Tushare")}
+if(!require(RiskPortfolios)){install.packages("RiskPortfolios")}
+if(!require(ggplot2)){install.packages("ggplot2")}
+#如果报错could not find function "xts" 或者 "mutate"
+if(!require(dplyr)){install.packages("dplyr")}
+if(!require(xts)){install.packages("xts")}
+
+#导入要使用的库
+library(tseries) 
+library(outliers)
+library(zoo) 
+library(dygraphs)
+library(fPortfolio)
+library(Tushare)
+library(RiskPortfolios)  
+library(ggplot2)
+#如果报错could not find function "xts" 或者 "mutate"
+library(dplyr)
+library(xts)
+```
+
+```{r}
+dateA <- backdataA2$TradingDate
+
+MyPortfolio<-xts(R_model,as.Date(dateA[c(1624:1723)])) %>% as.zoo()
+# names(MyPortfolio) <- c("600837","002371","600276","002410","600406","600600","601088")
+# names(MyPortfolio) <- c("601688","002475","600196","000063","300274","000895","600188")
+# names(MyPortfolio) <- c("000776","002179","000538","600050","002074","600809","601857")
+names(MyPortfolio) <- c("601628","002049","002252","002459","000568","600346")
+```
+
+```{r}
+DataClean <- function(MyPortfolio){
+  #去除NA值
+  table(is.na(MyPortfolio))
+  MyPortfolio<-MyPortfolio[complete.cases(MyPortfolio), ] 
+  table(is.na(MyPortfolio))
+  
+  #获取股票名字
+  stocknames<-names(MyPortfolio)
+  #生成收益率序列名字r_001-r_010
+  number<- as.character(sprintf("%03d",1:ncol(MyPortfolio)))
+  new_stockname <- paste("r_",number,sep="")
+  
+  #差分取对数收益率并且去除OUTLIERS
+  for (m in 1:ncol(MyPortfolio)) {
+    assign(new_stockname[m],
+           MyPortfolio[,m])
+                                  }
+
+  #将数据合并
+  RSeries <- cbind(r_001,r_002)
+  if(ncol(MyPortfolio)>2){
+  for (i in 3:ncol(MyPortfolio)){
+   temp <-get(new_stockname[i])
+   RSeries <- cbind(RSeries,temp)
+  }
+  }
+  #再次去除NA值
+  table(is.na(RSeries))
+  RSeries<-RSeries[complete.cases(RSeries), ] 
+  table(is.na(RSeries))
+  #重命名
+  names(RSeries) <- stocknames
+  return(RSeries)
+}
+#清洗差分数据
+RPortfolio <- DataClean(MyPortfolio = MyPortfolio)
+#可视化
+dygraph(RPortfolio)
+
+```
+```{r}
+#投资组合的统计学数据
+  sta_por <- data.frame()
+  for (i in 1:ncol(RPortfolio)) {
+    sta_por <- rbind.data.frame(sta_por,data.frame(names(RPortfolio)[i],
+                                                   mean(RPortfolio[,i]),
+                                                   sd(RPortfolio[,i])))
+  }
+names(sta_por)<- c("股票名称","收益率期望","标准差")
+sta_por
+```
+
+```{r}
+#制作收益率和协方差矩阵
+  returnPort <- colMeans(RPortfolio)
+  riskPort <- cov(RPortfolio)#协方差
+  ## 计算一下CVaR？
+  #初始化仓位（投资比例）矩阵
+  w <- matrix(1,ncol=ncol(RPortfolio),nrow=1)
+  mean_disv <- as.matrix(data.frame(colMeans(RPortfolio),colSds(RPortfolio)))
+  #模拟20000种可能的比例组合
+  n <- 20000
+  for (i in 1:n){
+    w<-c(runif(ncol(RPortfolio),0,1))
+    #将比例化为百分比
+    w<-w/sum(w)
+    #计算结果
+    mean_disv<-rbind(mean_disv,c(t(w)%*%returnPort,sqrt(t(w)%*%riskPort%*%w)))
+  }
+```
+```{r}
+plot(mean_disv[,2],mean_disv[,1],type = "p", 
+col="Royalblue",cex = 0.2,xlab = "Risk(σ)",
+ylab = "Return")
+```
+
+```{r}
+ #初始化
+  specPort<-portfolioSpec()
+  #设定无风险资产的利率为余额宝收益的年化收益率2.095%(日化利率0.00057%）
+  #setRiskFreeRate(specPort)<- 0.00057
+  #有效边界点数量
+  setNFrontierPoints(specPort) <- 500
+  Frontera <- portfolioFrontier(as.timeSeries(RPortfolio),spec=specPort )
+  #绘制有效边界和有无风险资产投资下的夏普比率最大的投资组合比例
+  plot(Frontera)
+```
+
+
+```{r}
+#最小风险组合(红色圆点)
+PortfolioMinRisk<-minriskPortfolio(as.timeSeries(RPortfolio),spec=specPort, constraints = "LongOnly")
+#理想仓位比例
+PortfolioMinRisk@portfolio@portfolio$weights
+#可视化(饼图)
+df <- data.frame(weights = as.numeric(PortfolioMinRisk@portfolio@portfolio$weights)*100, 
+                 StockName = names(PortfolioMinRisk@portfolio@portfolio$weights))
+df$StockName<-as.factor(df$StockName)
+df$StockNameP <-as.factor(paste(df$StockName,round(df$weights,2),"%",sep=" "))
+ggplot(df, aes(x = "", y = weights, fill = StockNameP)) + 
+geom_bar(stat = "identity") + 
+coord_polar(theta = "y") 
+df <- df[,-3]
+names(df) <-c("理想仓位（%）","股票名称")
+df
+PortfolioMinRisk
+
+#最小CVaR
+## 等权重投资组合
+cvarSpec <- portfolioSpec()
+setType(cvarSpec) <- "CVaR"
+nAssets <- ncol(RPortfolio)
+setWeights(cvarSpec) <- rep(1/nAssets, times=nAssets)
+setSolver(cvarSpec) <- "solveRglpk.CVAR"
+setAlpha(cvarSpec)<-0.05
+ewPortfolio <- feasiblePortfolio(data = as.timeSeries(RPortfolio),spec = cvarSpec,constraints = "LongOnly")
+ewPortfolio
+# setAlpha(cvarSpec)<-0.1
+# ewPortfolio <- feasiblePortfolio(data = as.timeSeries(RPortfolio),spec = cvarSpec,constraints = "LongOnly")
+# ewPortfolio
+
+cvarminSpec <- portfolioSpec()
+setType(cvarminSpec) <- "CVaR"
+setAlpha(cvarminSpec)<-0.05
+setSolver(cvarminSpec) <- "solveRglpk.CVAR"
+setTargetReturn(cvarminSpec)<-getTargetReturn(ewPortfolio@portfolio)["mean"]
+CVaRPortfoliominRisk <-  efficientPortfolio(data = as.timeSeries(RPortfolio), spec = cvarminSpec,constraints = "LongOnly")
+CVaRPortfoliominRisk
+```
+
+```{r}
+#最大夏普比率组合(蓝色三角形)
+PortfolioMaxTan<-tangencyPortfolio(as.timeSeries(RPortfolio),spec=specPort, constraints = "LongOnly")
+PortfolioMaxTan@portfolio@portfolio$weights
+PortfolioMaxTan
+df2 <- data.frame(weights = as.numeric(PortfolioMaxTan@portfolio@portfolio$weights)*100, 
+                 StockName = names(PortfolioMaxTan@portfolio@portfolio$weights))
+df2$StockName<-as.factor(df2$StockName)
+df2$StockNameP <-as.factor(paste(df2$StockName,round(df2$weights,2),"%",sep=" "))
+ggplot(df2, aes(x = "", y = weights, fill = StockNameP)) + 
+geom_bar(stat = "identity") + 
+coord_polar(theta = "y") 
+df2 <- df2[,-3]
+names(df2) <-c("理想仓位（%）","股票名称")
+df2
+```
